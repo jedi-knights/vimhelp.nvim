@@ -110,6 +110,69 @@ function M.build(opts, deps)
 	return true
 end
 
+--- Async twin of M.build — same shape, callback-based. The
+--- :VimHelpBuild command uses this so tantivy indexing doesn't block
+--- the editor. Progress + result notifications fire on the main loop
+--- (deferred through vim.schedule in the default async runner) so it
+--- is safe to touch the Neovim API here.
+---
+--- Search stays functional while a build is running because tantivy
+--- commits atomically — a concurrent search sees the old snapshot xor
+--- the new one, never a torn state.
+---
+--- `on_done(success: boolean)` fires exactly once: after the subprocess
+--- completes (success=true on code 0, false otherwise), or synchronously
+--- when we bail before spawning (bad binary, bad config). Callers who
+--- don't care can omit it.
+---
+--- @param opts table?  { incremental: boolean }
+--- @param deps table?  { async_runner, notify }
+--- @param on_done fun(ok: boolean)?
+function M.build_async(opts, deps, on_done)
+	opts = opts or {}
+	deps = deps or {}
+	on_done = on_done or function() end
+	local notify = deps.notify or vim.notify
+
+	local bin = binary.resolve(M.config.binary_path)
+	if not bin then
+		notify(
+			"vimhelp: vimhelp-index binary not found. "
+				.. "Install from https://github.com/jedi-knights/vimhelp-index/releases",
+			vim.log.levels.ERROR
+		)
+		on_done(false)
+		return
+	end
+
+	local ok, docs_globs_or_err = pcall(normalize_docs_globs, M.config.auto_index_docs)
+	if not ok then
+		notify(tostring(docs_globs_or_err), vim.log.levels.ERROR)
+		on_done(false)
+		return
+	end
+	local docs_globs = docs_globs_or_err
+
+	notify(string.format("vimhelp: building index at %s...", M.config.index_dir), vim.log.levels.INFO)
+	binary.build_async(bin, docs_globs, M.config.index_dir, opts, deps, function(result)
+		if result.code ~= 0 then
+			notify(
+				string.format("vimhelp: build failed (exit %d): %s", result.code, vim.trim(result.stderr or "")),
+				vim.log.levels.ERROR
+			)
+			on_done(false)
+			return
+		end
+		local trimmed = vim.trim(result.stdout or "")
+		if trimmed ~= "" then
+			notify(trimmed, vim.log.levels.INFO)
+		else
+			notify("vimhelp: build complete.", vim.log.levels.INFO)
+		end
+		on_done(true)
+	end)
+end
+
 --- Confirm the index directory is usable. When it isn't AND
 --- `auto_index = true`, transparently build it first.
 ---

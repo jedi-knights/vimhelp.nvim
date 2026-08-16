@@ -174,4 +174,78 @@ describe("vimhelp.binary", function()
 			end)
 		end)
 	end)
+
+	describe("build_async", function()
+		-- Fake async runner: captures argv, invokes on_done synchronously
+		-- with a canned result. Tests already run in the main loop so
+		-- there's no vim.schedule() concern here — the real default
+		-- runner is what needs it (see binary.lua).
+		local function capturing_async_runner(canned)
+			local captured
+			local runner = function(argv, on_done)
+				captured = argv
+				on_done(canned or { code = 0, stdout = "Indexed 3", stderr = "" })
+			end
+			return runner, function()
+				return captured
+			end
+		end
+
+		it("assembles the same argv shape as build()", function()
+			local runner, get_argv = capturing_async_runner()
+			binary.build_async("vimhelp-index", { "/a/*.txt", "/b/*.txt" }, "/tmp/idx", { incremental = true }, {
+				async_runner = runner,
+			}, function() end)
+			assert.same({
+				"vimhelp-index",
+				"build",
+				"--docs",
+				"/a/*.txt",
+				"--docs",
+				"/b/*.txt",
+				"--out",
+				"/tmp/idx",
+				"--incremental",
+			}, get_argv())
+		end)
+
+		it("delivers the runner's result to on_done verbatim", function()
+			local received
+			local runner = function(_argv, on_done)
+				on_done({ code = 7, stdout = "OUT", stderr = "ERR" })
+			end
+			binary.build_async("bin", { "g" }, "/tmp", {}, { async_runner = runner }, function(result)
+				received = result
+			end)
+			assert.equals(7, received.code)
+			assert.equals("OUT", received.stdout)
+			assert.equals("ERR", received.stderr)
+		end)
+
+		it("rejects a missing on_done callback at the boundary", function()
+			assert.has_error(function()
+				---@diagnostic disable-next-line: param-type-mismatch
+				binary.build_async("bin", { "g" }, "/tmp", {}, {}, nil)
+			end)
+		end)
+
+		it("shares the same boundary rejections as build()", function()
+			-- The argv-assembly path is shared, so all the empty-input
+			-- rejections propagate. One spot-check per bad arg is enough;
+			-- the sync path exhaustively covers the matrix.
+			local runner = function(_argv, on_done)
+				on_done({ code = 0, stdout = "", stderr = "" })
+			end
+			local noop = function() end
+			assert.has_error(function()
+				binary.build_async("", { "g" }, "/tmp", {}, { async_runner = runner }, noop)
+			end)
+			assert.has_error(function()
+				binary.build_async("bin", {}, "/tmp", {}, { async_runner = runner }, noop)
+			end)
+			assert.has_error(function()
+				binary.build_async("bin", { "g" }, "", {}, { async_runner = runner }, noop)
+			end)
+		end)
+	end)
 end)

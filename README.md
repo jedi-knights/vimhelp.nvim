@@ -85,6 +85,14 @@ an empty union across every glob errors.
 :VimHelpBuild incremental   " re-index only changed files
 ```
 
+`:VimHelpBuild` runs asynchronously — the editor stays responsive
+while `vimhelp-index` chews through the docs corpus (a full build over
+a few thousand help files takes multiple seconds). Progress and the
+CLI's summary line surface as `vim.notify` messages. Search stays
+functional while a build runs because the tantivy index commits
+atomically — a concurrent `:VimHelpSearch` sees the old snapshot xor
+the new one, never a torn state.
+
 ### Directly via the CLI
 
 ```sh

@@ -133,10 +133,16 @@ line, never a Lua traceback. Safe to bind directly.
     :VimHelpBuild incremental
 <
 Run `vimhelp-index build` against the configured `index_dir` +
-`auto_index_docs` glob(s). Progress and the CLI's summary line are
-reported via |vim.notify|. Never throws — failures surface as
-notify ERROR lines (including a type error when `auto_index_docs`
+`auto_index_docs` glob(s). Runs asynchronously — the editor stays
+responsive while tantivy indexes the corpus (a full build over a few
+thousand help files takes multiple seconds). Progress and the CLI's
+summary line surface via |vim.notify|. Never throws — failures surface
+as notify ERROR lines (including a type error when `auto_index_docs`
 is neither a string nor a list of strings).
+
+Concurrency: |:VimHelpSearch| remains functional while a build runs.
+The tantivy index commits atomically, so a concurrent search sees the
+old snapshot xor the new one, never a torn state.
 
 The `incremental` argument passes `--incremental` to the CLI so only
 files changed since the last build are re-indexed. Useful after
@@ -144,7 +150,10 @@ installing new plugins.
 
 Related: the `auto_index = true` config key runs the same build
 automatically the first time |:VimHelpSearch| / |:VimHelpHover| finds
-`index_dir` missing.
+`index_dir` missing. That path currently uses the SYNCHRONOUS build
+(blocking, with a progress |vim.notify|) — the async path is exposed
+via `require("vimhelp").build_async(opts?, deps?, on_done?)` for
+callers that want fire-and-forget builds without blocking.
 
 ==============================================================================
 5. Configuration                                             *vimhelp-config*
@@ -212,8 +221,17 @@ Facade (`require("vimhelp")`):
 - `build(opts?, deps?)`     — `vimhelp-index build` against config's
                                `auto_index_docs` + `index_dir`.
                                `opts.incremental` adds `--incremental`.
-                               Notifies progress + result. Returns
-                               true on success, false on failure.
+                               Notifies progress + result. SYNCHRONOUS —
+                               blocks until the subprocess exits.
+                               Returns true on success, false on
+                               failure.
+- `build_async(opts?, deps?, on_done?)` —
+                               Async twin of `build`. Non-blocking;
+                               `on_done(ok: boolean)` fires once when
+                               the subprocess (or a pre-flight check)
+                               completes. The |:VimHelpBuild| command
+                               uses this so the editor stays
+                               responsive.
 - `ensure_index(deps?)`     — nil when `index_dir` exists; error
                                message string otherwise (either an
                                actionable "run :VimHelpBuild" message

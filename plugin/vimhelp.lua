@@ -50,16 +50,22 @@ end, {
 })
 
 -- :VimHelpBuild — manual (re)build of the index at the configured
--- index_dir. Accepts an optional arg "incremental" to pass
--- --incremental to the CLI (re-indexes only changed files).
--- M.build has its own error handling (notify), no pcall wrap needed.
+-- index_dir. Runs asynchronously so the editor stays responsive while
+-- tantivy indexes the docs corpus (a full build over a few thousand
+-- files can take multiple seconds). Progress + result surface as
+-- vim.notify lines; M.build_async has its own error handling, no
+-- pcall wrap needed.
+--
+-- Accepts an optional arg "incremental" to pass --incremental to the
+-- CLI (re-indexes only files whose mtime/size changed since the last
+-- build).
 vim.api.nvim_create_user_command("VimHelpBuild", function(opts)
 	local incremental = vim.trim(opts.args) == "incremental"
-	require("vimhelp").build({ incremental = incremental })
+	require("vimhelp").build_async({ incremental = incremental })
 end, {
 	nargs = "?",
 	complete = function()
 		return { "incremental" }
 	end,
-	desc = "Build the vimhelp index (arg 'incremental' for --incremental)",
+	desc = "Build the vimhelp index asynchronously (arg 'incremental' for --incremental)",
 })
