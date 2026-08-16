@@ -100,9 +100,9 @@ describe("vimhelp.binary", function()
 			end
 		end
 
-		it("assembles the expected argv without --incremental by default", function()
+		it("assembles the expected argv for one glob without --incremental", function()
 			local runner, get_argv = capturing_runner()
-			binary.build("vimhelp-index", "/path/*.txt", "/tmp/idx", {}, { runner = runner })
+			binary.build("vimhelp-index", { "/path/*.txt" }, "/tmp/idx", {}, { runner = runner })
 			assert.same({
 				"vimhelp-index",
 				"build",
@@ -113,11 +113,29 @@ describe("vimhelp.binary", function()
 			}, get_argv())
 		end)
 
-		it("appends --incremental when opts.incremental is true", function()
+		it("emits one --docs per entry when passed multiple globs", function()
 			local runner, get_argv = capturing_runner()
-			binary.build("vimhelp-index", "/p/*.txt", "/tmp/idx", { incremental = true }, {
+			binary.build("vimhelp-index", { "/a/*.txt", "/b/*.txt", "/c/*.txt" }, "/tmp/idx", {}, { runner = runner })
+			assert.same({
+				"vimhelp-index",
+				"build",
+				"--docs",
+				"/a/*.txt",
+				"--docs",
+				"/b/*.txt",
+				"--docs",
+				"/c/*.txt",
+				"--out",
+				"/tmp/idx",
+			}, get_argv())
+		end)
+
+		it("appends --incremental after --out when opts.incremental is true", function()
+			local runner, get_argv = capturing_runner()
+			binary.build("vimhelp-index", { "/p/*.txt" }, "/tmp/idx", { incremental = true }, {
 				runner = runner,
 			})
+			-- Slot 7 = "--incremental" (bin, build, --docs, /p/*.txt, --out, /tmp/idx, --incremental).
 			assert.equals("--incremental", get_argv()[7])
 		end)
 
@@ -125,24 +143,34 @@ describe("vimhelp.binary", function()
 			local runner = function()
 				return { code = 5, stdout = "OUT", stderr = "ERR" }
 			end
-			local r = binary.build("bin", "g", "/tmp", {}, { runner = runner })
+			local r = binary.build("bin", { "g" }, "/tmp", {}, { runner = runner })
 			assert.equals(5, r.code)
 			assert.equals("OUT", r.stdout)
 			assert.equals("ERR", r.stderr)
 		end)
 
-		it("rejects empty bin / docs / out_dir at the boundary", function()
+		it("rejects empty bin / docs_globs / out_dir at the boundary", function()
 			local runner = function()
 				return { code = 0, stdout = "", stderr = "" }
 			end
 			assert.has_error(function()
-				binary.build("", "g", "/tmp", {}, { runner = runner })
+				binary.build("", { "g" }, "/tmp", {}, { runner = runner })
+			end)
+			-- Empty list.
+			assert.has_error(function()
+				binary.build("bin", {}, "/tmp", {}, { runner = runner })
+			end)
+			-- Non-list value.
+			assert.has_error(function()
+				---@diagnostic disable-next-line: param-type-mismatch
+				binary.build("bin", "single_string_not_allowed_here", "/tmp", {}, { runner = runner })
+			end)
+			-- Entry that's not a non-empty string.
+			assert.has_error(function()
+				binary.build("bin", { "" }, "/tmp", {}, { runner = runner })
 			end)
 			assert.has_error(function()
-				binary.build("bin", "", "/tmp", {}, { runner = runner })
-			end)
-			assert.has_error(function()
-				binary.build("bin", "g", "", {}, { runner = runner })
+				binary.build("bin", { "g" }, "", {}, { runner = runner })
 			end)
 		end)
 	end)

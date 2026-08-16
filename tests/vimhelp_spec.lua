@@ -286,6 +286,63 @@ describe("vimhelp", function()
 			assert.is_truthy(calls[2].msg:match("exit 2"))
 			assert.is_truthy(calls[2].msg:match("no files matched"))
 		end)
+
+		it("expands `auto_index_docs` list into repeated --docs argv entries", function()
+			mod.setup({
+				binary_path = vim.v.progpath,
+				auto_index_docs = { "/a/*.txt", "/b/*.txt", "/c/*.txt" },
+			})
+			local captured_argv
+			mod.build({}, {
+				notify = function() end,
+				runner = function(argv)
+					captured_argv = argv
+					return { code = 0, stdout = "ok", stderr = "" }
+				end,
+			})
+			-- Bin, "build", then each --docs pair, then --out /tmp/...
+			assert.equals("--docs", captured_argv[3])
+			assert.equals("/a/*.txt", captured_argv[4])
+			assert.equals("--docs", captured_argv[5])
+			assert.equals("/b/*.txt", captured_argv[6])
+			assert.equals("--docs", captured_argv[7])
+			assert.equals("/c/*.txt", captured_argv[8])
+			assert.equals("--out", captured_argv[9])
+		end)
+
+		it("notifies + returns false when auto_index_docs is a bad type", function()
+			mod.setup({
+				binary_path = vim.v.progpath,
+				---@diagnostic disable-next-line: assign-type-mismatch
+				auto_index_docs = 42, -- users occasionally mis-type; must not traceback
+			})
+			local notify, calls = capture_notifies()
+			local ok = mod.build({}, {
+				notify = notify,
+				runner = function()
+					error("runner should not be called when normalization fails")
+				end,
+			})
+			assert.is_false(ok)
+			-- The type error surfaces as a notify, not a Lua traceback.
+			assert.is_truthy(calls[#calls].msg:match("auto_index_docs must be a string or a table"))
+		end)
+
+		it("notifies + returns false when auto_index_docs is an empty table", function()
+			mod.setup({
+				binary_path = vim.v.progpath,
+				auto_index_docs = {},
+			})
+			local notify, calls = capture_notifies()
+			local ok = mod.build({}, {
+				notify = notify,
+				runner = function()
+					error("runner should not be called")
+				end,
+			})
+			assert.is_false(ok)
+			assert.is_truthy(calls[#calls].msg:match("must not be empty"))
+		end)
 	end)
 
 	describe("ensure_index", function()

@@ -133,9 +133,10 @@ line, never a Lua traceback. Safe to bind directly.
     :VimHelpBuild incremental
 <
 Run `vimhelp-index build` against the configured `index_dir` +
-`auto_index_docs` glob. Progress and the CLI's summary line are
+`auto_index_docs` glob(s). Progress and the CLI's summary line are
 reported via |vim.notify|. Never throws — failures surface as
-notify ERROR lines.
+notify ERROR lines (including a type error when `auto_index_docs`
+is neither a string nor a list of strings).
 
 The `incremental` argument passes `--incremental` to the CLI so only
 files changed since the last build are re-indexed. Useful after
@@ -156,16 +157,24 @@ Defaults (see `lua/vimhelp/config.lua`):
       limit           = 20,      -- 0 means the CLI's default cap
       picker          = "auto",  -- "auto" | "snacks" | "telescope" | "messages"
       auto_index      = false,   -- opt in to auto-build on first use
-      auto_index_docs = $VIMRUNTIME .. "/doc/*.txt",
+      auto_index_docs = $VIMRUNTIME .. "/doc/*.txt",  -- string | string[]
     }
 <
 `auto_index` and `auto_index_docs` work together:
   - When `auto_index = true` and `index_dir` doesn't exist, the next
     |:VimHelpSearch| / |:VimHelpHover| runs `vimhelp-index build
-    --docs=<auto_index_docs> --out=<index_dir>` first, then continues.
-  - `auto_index_docs` is a single glob (multi-glob support waits on a
-    CLI change). Recursive patterns work: LazyVim users typically set
-    `stdpath("data") .. "/lazy/**/doc/*.txt"` to catch plugin docs.
+    --docs=<...> --out=<index_dir>` first, then continues.
+  - `auto_index_docs` accepts either a single glob string or a list
+    of glob strings; a list expands into repeated `--docs` flags:
+>lua
+    auto_index_docs = {
+      vim.env.VIMRUNTIME .. "/doc/*.txt",
+      vim.fn.stdpath("data") .. "/lazy/*/doc/*.txt",
+    }
+<
+  - Individual list entries that match zero files are silently
+    ignored (handles `plugins/*/doc/*.txt` on a fresh install). Only
+    an empty UNION across every glob errors.
 
 ==============================================================================
 6. API                                                         *vimhelp-api*

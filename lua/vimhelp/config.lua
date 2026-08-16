@@ -22,13 +22,18 @@ M.defaults = {
 	--- @type boolean
 	auto_index = false,
 
-	--- Glob passed to `vimhelp-index build --docs=<glob>` when the
-	--- auto-build fires. Default covers just built-in Neovim help.
-	--- LazyVim users typically override to something like:
-	---   vim.fn.stdpath("data") .. "/lazy/**/doc/*.txt"
-	--- Note: only ONE glob today — multi-glob support is a follow-up
-	--- (needs a repeatable --docs flag on the CLI).
-	--- @type string
+	--- Glob(s) passed to `vimhelp-index build` when the auto-build
+	--- fires. Accepts a single string OR a list of strings; a list
+	--- expands into repeated `--docs` flags. Default covers just
+	--- built-in Neovim help. LazyVim users typically widen it to
+	--- catch installed plugin docs too:
+	---   auto_index_docs = {
+	---     vim.env.VIMRUNTIME .. "/doc/*.txt",
+	---     vim.fn.stdpath("data") .. "/lazy/*/doc/*.txt",
+	---   }
+	--- Individual list entries that match zero files are silently
+	--- ignored by the CLI; only an empty union across ALL globs errors.
+	--- @type string | string[]
 	auto_index_docs = (vim.env.VIMRUNTIME or "") .. "/doc/*.txt",
 
 	--- Max hits `:VimHelpSearch` requests from the CLI. Zero means the
