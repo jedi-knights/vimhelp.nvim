@@ -35,6 +35,9 @@ in the CLI.
   https://github.com/jedi-knights/vimhelp-index/releases
 - An index directory built by `vimhelp-index build`. Default location:
   `stdpath("cache") .. "/vimhelp-index"`.
+- Optional peers: `folke/snacks.nvim` or `nvim-telescope/telescope.nvim`
+  for an interactive picker. Without either, |:VimHelpSearch| falls
+  back to a plain |:messages| render — no error.
 
 ==============================================================================
 3. Setup                                                       *vimhelp-setup*
@@ -59,15 +62,29 @@ the default index directory exists. Call setup only to override defaults.
 >
     :VimHelpSearch {query}
 <
-Search the vimhelp index for {query} and print ranked hits to |:messages|.
-Multi-word queries work: `:VimHelpSearch floating window` is a single
-query, not two.
+Search the vimhelp index for {query} and open the configured picker
+(or fall back to |:messages|). Multi-word queries work:
+`:VimHelpSearch floating window` is a single query, not two.
 
-Rejects an empty query with an actionable message. Errors clearly if the
-binary is missing (points at the install URL) or the index directory
-doesn't exist (points at the build command).
+Picker resolution order under the default `picker = "auto"`:
+  1. `folke/snacks.nvim` if loadable
+  2. `nvim-telescope/telescope.nvim` if loadable
+  3. Plain :messages render
 
-Example output: >
+Force a specific backend via |vimhelp-config|'s `picker` key. Non-
+`"messages"` values silently fall back to `"messages"` when the
+requested peer isn't loadable, so `:VimHelpSearch` never errors just
+because a picker isn't installed.
+
+On selection:
+  - Hit has `tag` → `:help <tag>`.
+  - Otherwise → `:edit <document>` and cursor to `line`.
+
+Rejects an empty query with an actionable message. Errors clearly if
+the binary is missing (points at the install URL) or the index
+directory doesn't exist (points at the build command).
+
+Example messages output (fallback): >
     1. nvim_open_win  (score 3.42)
        $VIMRUNTIME/doc/api.txt:1287  — 3.2. Window functions
        Opens a new floating window. Windows attach to a buffer …
@@ -85,6 +102,7 @@ Defaults (see `lua/vimhelp/config.lua`):
       binary_path = nil,     -- nil probes $PATH for "vimhelp-index"
       index_dir   = stdpath("cache") .. "/vimhelp-index",
       limit       = 20,      -- 0 means the CLI's default cap
+      picker      = "auto",  -- "auto" | "snacks" | "telescope" | "messages"
     }
 <
 
@@ -93,18 +111,28 @@ Defaults (see `lua/vimhelp/config.lua`):
 
 Submodules (`require("vimhelp.<name>")`):
 
-- `config`   — defaults and merge helper
-- `binary`   — subprocess invocation (`resolve`, `search`). Injectable
-               `runner` for tests.
-- `search`   — pure `parse` + `render` for the CLI's JSON envelope.
-- `health`   — |:checkhealth| entry point.
+- `config`             — defaults and merge helper.
+- `binary`             — subprocess invocation (`resolve`, `search`).
+                          Injectable `runner` for tests.
+- `search`             — pure `parse` + `render` for the CLI's JSON
+                          envelope.
+- `picker`             — dispatcher (`choose`, `pick`) that routes a
+                          parsed result to a picker backend.
+- `pickers.snacks`     — snacks.nvim adapter.
+- `pickers.telescope`  — telescope.nvim adapter.
+- `pickers.messages`   — plain-messages fallback.
+- `jump`               — `to_hit(hit, deps?)`: `:help <tag>` when the
+                          hit has a tag, else `:edit <document>` +
+                          cursor at `line`.
+- `health`             — |:checkhealth| entry point.
 
 Facade (`require("vimhelp")`):
 
-- `setup(opts?, deps?)` — merge opts over defaults; optional.
-- `search(query, deps?)` — resolve binary + run subprocess + parse + print.
-                           Returns the raw parsed result so callers can
-                           pipe it further (a future picker slice will).
+- `setup(opts?, deps?)`   — merge opts over defaults; optional.
+- `search(query, deps?)`  — resolve binary + run subprocess + parse +
+                             route to picker. Returns the raw parsed
+                             result so callers can pipe it further
+                             (a future `K`-handler slice will).
 
 ==============================================================================
 7. Health                                                    *vimhelp-health*
