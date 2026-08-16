@@ -211,4 +211,134 @@ describe("vimhelp", function()
 			assert.is_truthy(calls[1].msg:match("boom"))
 		end)
 	end)
+
+	describe("build", function()
+		local function capture_notifies()
+			local calls = {}
+			return function(msg, level)
+				calls[#calls + 1] = { msg = msg, level = level }
+			end, calls
+		end
+
+		it("notifies + returns false when the binary is unresolved", function()
+			local notify, calls = capture_notifies()
+			mod.setup({ binary_path = "/definitely/not/a/binary" })
+			local ok = mod.build({}, { notify = notify })
+			assert.is_false(ok)
+			assert.equals(vim.log.levels.ERROR, calls[1].level)
+			assert.is_truthy(calls[1].msg:match("vimhelp%-index binary not found"))
+		end)
+
+		it("notifies progress + success + returns true on happy path", function()
+			mod.setup({
+				binary_path = vim.v.progpath, -- executable check passes
+				auto_index_docs = "/some/glob/*.txt",
+			})
+			local captured_argv
+			local notify, calls = capture_notifies()
+			local ok = mod.build({}, {
+				notify = notify,
+				runner = function(argv)
+					captured_argv = argv
+					return {
+						code = 0,
+						stdout = "Indexed 12 section(s) from 3 file(s) → /tmp/idx",
+						stderr = "",
+					}
+				end,
+			})
+			assert.is_true(ok)
+			-- Progress notify first, CLI-summary notify second.
+			assert.equals(2, #calls)
+			assert.is_truthy(calls[1].msg:match("building index"))
+			assert.equals(vim.log.levels.INFO, calls[1].level)
+			assert.is_truthy(calls[2].msg:match("Indexed 12 section"))
+			-- argv shape: sees the configured docs glob.
+			assert.equals("/some/glob/*.txt", captured_argv[4])
+		end)
+
+		it("appends --incremental when opts.incremental=true", function()
+			mod.setup({ binary_path = vim.v.progpath })
+			local captured_argv
+			mod.build({ incremental = true }, {
+				notify = function() end,
+				runner = function(argv)
+					captured_argv = argv
+					return { code = 0, stdout = "ok", stderr = "" }
+				end,
+			})
+			assert.equals("--incremental", captured_argv[7])
+		end)
+
+		it("notifies ERROR + returns false on non-zero CLI exit", function()
+			mod.setup({ binary_path = vim.v.progpath })
+			local notify, calls = capture_notifies()
+			local ok = mod.build({}, {
+				notify = notify,
+				runner = function()
+					return { code = 2, stdout = "", stderr = "no files matched" }
+				end,
+			})
+			assert.is_false(ok)
+			-- Progress notify first, error notify second.
+			assert.equals(2, #calls)
+			assert.equals(vim.log.levels.ERROR, calls[2].level)
+			assert.is_truthy(calls[2].msg:match("exit 2"))
+			assert.is_truthy(calls[2].msg:match("no files matched"))
+		end)
+	end)
+
+	describe("ensure_index", function()
+		it("returns nil when the index directory already exists", function()
+			local tmp = vim.fn.tempname()
+			vim.fn.mkdir(tmp, "p")
+			mod.setup({ index_dir = tmp })
+			assert.is_nil(mod.ensure_index())
+		end)
+
+		it("returns an actionable error message when auto_index is off + index missing", function()
+			mod.setup({ index_dir = "/definitely/not/a/dir", auto_index = false })
+			local err = mod.ensure_index()
+			assert.is_string(err)
+			-- Names the fix paths: :VimHelpBuild + auto_index config key.
+			assert.is_truthy(err:match(":VimHelpBuild"))
+			assert.is_truthy(err:match("auto_index"))
+		end)
+
+		it("delegates to M.build when auto_index=true and returns nil on success", function()
+			-- index_dir missing → we should hit M.build. Point the runner
+			-- at success and don't actually create the dir; ensure_index
+			-- trusts M.build's return value.
+			mod.setup({
+				binary_path = vim.v.progpath,
+				index_dir = "/tmp/definitely-missing-vh-" .. tostring(math.random()),
+				auto_index = true,
+			})
+			local build_called = false
+			assert.is_nil(mod.ensure_index({
+				notify = function() end,
+				runner = function()
+					build_called = true
+					return { code = 0, stdout = "Indexed", stderr = "" }
+				end,
+			}))
+			assert.is_true(build_called)
+		end)
+
+		it("returns a short error message when the auto-build fails", function()
+			mod.setup({
+				binary_path = vim.v.progpath,
+				index_dir = "/tmp/definitely-missing-vh-" .. tostring(math.random()),
+				auto_index = true,
+			})
+			local err = mod.ensure_index({
+				notify = function() end,
+				runner = function()
+					return { code = 3, stdout = "", stderr = "boom" }
+				end,
+			})
+			assert.is_string(err)
+			assert.is_truthy(err:match("auto%-build failed"))
+		end)
+	end)
 end)

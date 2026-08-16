@@ -48,3 +48,18 @@ vim.api.nvim_create_user_command("VimHelpHover", function()
 end, {
 	desc = "Jump to the top vimhelp-index hit for the word under the cursor",
 })
+
+-- :VimHelpBuild — manual (re)build of the index at the configured
+-- index_dir. Accepts an optional arg "incremental" to pass
+-- --incremental to the CLI (re-indexes only changed files).
+-- M.build has its own error handling (notify), no pcall wrap needed.
+vim.api.nvim_create_user_command("VimHelpBuild", function(opts)
+	local incremental = vim.trim(opts.args) == "incremental"
+	require("vimhelp").build({ incremental = incremental })
+end, {
+	nargs = "?",
+	complete = function()
+		return { "incremental" }
+	end,
+	desc = "Build the vimhelp index (arg 'incremental' for --incremental)",
+})

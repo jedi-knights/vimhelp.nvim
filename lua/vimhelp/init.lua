@@ -33,17 +33,92 @@ function M.setup(opts, deps)
 	M.deps = deps or {}
 end
 
+--- Run `vimhelp-index build` against the configured index_dir + docs
+--- glob, notifying progress and result. Same subprocess model as
+--- search — deps.runner is injectable for tests.
+---
+--- `opts.incremental = true` passes `--incremental` to the CLI. The
+--- :VimHelpBuild command exposes this via its `incremental` argument.
+---
+--- @param opts table?  { incremental: boolean }
+--- @param deps table?  { runner, notify }
+--- @return boolean  true when the build succeeded; false when it didn't
+---                   (failure was already notified with the specific reason).
+function M.build(opts, deps)
+	opts = opts or {}
+	deps = deps or {}
+	local notify = deps.notify or vim.notify
+
+	local bin = binary.resolve(M.config.binary_path)
+	if not bin then
+		notify(
+			"vimhelp: vimhelp-index binary not found. "
+				.. "Install from https://github.com/jedi-knights/vimhelp-index/releases",
+			vim.log.levels.ERROR
+		)
+		return false
+	end
+
+	notify(string.format("vimhelp: building index at %s...", M.config.index_dir), vim.log.levels.INFO)
+	local result = binary.build(bin, M.config.auto_index_docs, M.config.index_dir, opts, deps)
+	if result.code ~= 0 then
+		notify(
+			string.format("vimhelp: build failed (exit %d): %s", result.code, vim.trim(result.stderr or "")),
+			vim.log.levels.ERROR
+		)
+		return false
+	end
+	local trimmed = vim.trim(result.stdout or "")
+	if trimmed ~= "" then
+		-- CLI's own summary line — "Indexed N section(s) from M file(s) → ...".
+		notify(trimmed, vim.log.levels.INFO)
+	else
+		notify("vimhelp: build complete.", vim.log.levels.INFO)
+	end
+	return true
+end
+
+--- Confirm the index directory is usable. When it isn't AND
+--- `auto_index = true`, transparently build it first.
+---
+--- Returns nil on success (index ready to search), an error MESSAGE
+--- STRING on failure. Callers decide how to surface the failure —
+--- `M.search` throws (caught by the :VimHelpSearch command wrapper);
+--- `M.hover` notifies. Keeping the return shape uniform means
+--- neither caller has to pcall the other's contract.
+---
+--- @param deps table?  { runner, notify }
+--- @return string?  nil on success, error message on failure
+function M.ensure_index(deps)
+	if vim.fn.isdirectory(M.config.index_dir) == 1 then
+		return nil
+	end
+	if not M.config.auto_index then
+		return string.format(
+			"vimhelp: index directory %q does not exist. "
+				.. "Run :VimHelpBuild, or set require('vimhelp').setup({ auto_index = true }) "
+				.. "to have it built automatically on first use.",
+			M.config.index_dir
+		)
+	end
+	if not M.build({}, deps) then
+		-- M.build already notified the specific reason; hand the caller
+		-- a short handle so the search/hover surface has something to
+		-- throw / notify without duplicating the detail.
+		return "vimhelp: auto-build failed — see :messages for the specific error"
+	end
+	return nil
+end
+
 --- Search the vimhelp index and route the result to a picker backend.
 --- On bare Neovim (no snacks / telescope) falls back to printing to
 --- :messages, matching the pre-picker behaviour.
 ---
---- Returns the raw parsed result so callers can pipe it further
---- (a future `K`-handler slice will call this and consume `.hits[1]`
---- without opening a picker).
+--- Returns the raw parsed result so callers can pipe it further.
 ---
 --- @param query string  Non-empty query text. Multi-word queries work
 ---                       — clap passes them through as a single arg.
---- @param deps table?   { runner, has_module, pickers, snacks, telescope, jump, printer }
+--- @param deps table?   { runner, has_module, pickers, snacks, telescope, jump, printer, notify }
 --- @return { query: string, hits: table[] }?
 function M.search(query, deps)
 	assert(type(query) == "string" and #query > 0, "vimhelp.search: query required")
@@ -55,15 +130,10 @@ function M.search(query, deps)
 				.. "or set require('vimhelp').setup({ binary_path = '/path/to/vimhelp-index' })"
 		)
 	end
-	if vim.fn.isdirectory(M.config.index_dir) ~= 1 then
-		error(
-			string.format(
-				"vimhelp: index directory %q does not exist. Build it first: "
-					.. "vimhelp-index build --docs='<glob>' --out=%q",
-				M.config.index_dir,
-				M.config.index_dir
-			)
-		)
+
+	local index_err = M.ensure_index(deps)
+	if index_err then
+		error(index_err)
 	end
 
 	local result = binary.search(bin, M.config.index_dir, query, M.config.limit, deps)
@@ -117,16 +187,12 @@ function M.hover(deps)
 		)
 		return nil
 	end
-	if vim.fn.isdirectory(M.config.index_dir) ~= 1 then
-		notify(
-			string.format(
-				"vimhelp: index directory %q does not exist. "
-					.. "Build it first: vimhelp-index build --docs='<glob>' --out=%q",
-				M.config.index_dir,
-				M.config.index_dir
-			),
-			vim.log.levels.ERROR
-		)
+
+	-- ensure_index returns nil on success. Uses same deps shape so a
+	-- test-injected runner covers both search and the auto-build.
+	local index_err = M.ensure_index(deps)
+	if index_err then
+		notify(index_err, vim.log.levels.ERROR)
 		return nil
 	end
 

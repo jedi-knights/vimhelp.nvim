@@ -65,4 +65,32 @@ function M.search(bin, index_dir, query, limit, deps)
 	return runner(argv)
 end
 
+--- Run `vimhelp-index build --docs=<glob> --out=<dir> [--incremental]`.
+--- @param bin string Resolved binary path.
+--- @param docs string Glob passed as --docs (single-glob for now).
+--- @param out_dir string Where the index gets written.
+--- @param opts table? { incremental: boolean }
+--- @param deps table? { runner: fun(argv): {code,stdout,stderr} }
+--- @return table result  { code, stdout, stderr }
+function M.build(bin, docs, out_dir, opts, deps)
+	assert(type(bin) == "string" and #bin > 0, "binary.build: bin required")
+	assert(type(docs) == "string" and #docs > 0, "binary.build: docs glob required")
+	assert(type(out_dir) == "string" and #out_dir > 0, "binary.build: out_dir required")
+	opts = opts or {}
+	deps = deps or {}
+	local runner = deps.runner or default_runner
+	local argv = {
+		bin,
+		"build",
+		"--docs",
+		docs,
+		"--out",
+		out_dir,
+	}
+	if opts.incremental then
+		table.insert(argv, "--incremental")
+	end
+	return runner(argv)
+end
+
 return M

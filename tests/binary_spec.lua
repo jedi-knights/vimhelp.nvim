@@ -87,4 +87,63 @@ describe("vimhelp.binary", function()
 			end)
 		end)
 	end)
+
+	describe("build", function()
+		local function capturing_runner(canned)
+			local captured
+			local runner = function(argv)
+				captured = argv
+				return canned or { code = 0, stdout = "Indexed 3 sections", stderr = "" }
+			end
+			return runner, function()
+				return captured
+			end
+		end
+
+		it("assembles the expected argv without --incremental by default", function()
+			local runner, get_argv = capturing_runner()
+			binary.build("vimhelp-index", "/path/*.txt", "/tmp/idx", {}, { runner = runner })
+			assert.same({
+				"vimhelp-index",
+				"build",
+				"--docs",
+				"/path/*.txt",
+				"--out",
+				"/tmp/idx",
+			}, get_argv())
+		end)
+
+		it("appends --incremental when opts.incremental is true", function()
+			local runner, get_argv = capturing_runner()
+			binary.build("vimhelp-index", "/p/*.txt", "/tmp/idx", { incremental = true }, {
+				runner = runner,
+			})
+			assert.equals("--incremental", get_argv()[7])
+		end)
+
+		it("returns the runner's result verbatim", function()
+			local runner = function()
+				return { code = 5, stdout = "OUT", stderr = "ERR" }
+			end
+			local r = binary.build("bin", "g", "/tmp", {}, { runner = runner })
+			assert.equals(5, r.code)
+			assert.equals("OUT", r.stdout)
+			assert.equals("ERR", r.stderr)
+		end)
+
+		it("rejects empty bin / docs / out_dir at the boundary", function()
+			local runner = function()
+				return { code = 0, stdout = "", stderr = "" }
+			end
+			assert.has_error(function()
+				binary.build("", "g", "/tmp", {}, { runner = runner })
+			end)
+			assert.has_error(function()
+				binary.build("bin", "", "/tmp", {}, { runner = runner })
+			end)
+			assert.has_error(function()
+				binary.build("bin", "g", "", {}, { runner = runner })
+			end)
+		end)
+	end)
 end)
