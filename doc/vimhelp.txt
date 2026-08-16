@@ -11,6 +11,7 @@ CONTENTS                                                    *vimhelp-contents*
   3. Setup ....................... |vimhelp-setup|
   4. Commands .................... |vimhelp-commands|
      4.1. :VimHelpSearch ......... |:VimHelpSearch|
+     4.2. :VimHelpHover .......... |:VimHelpHover|
   5. Configuration ............... |vimhelp-config|
   6. API ......................... |vimhelp-api|
   7. Health ...................... |vimhelp-health|
@@ -93,6 +94,36 @@ Example messages output (fallback): >
        ...
 <
 
+------------------------------------------------------------------------------
+4.2. :VimHelpHover                                          *:VimHelpHover*
+
+>
+    :VimHelpHover
+<
+Grab the word under the cursor (|<cword>|), run a `--limit=1` search,
+and jump straight to the top hit. Skips the picker on purpose — hover
+is a one-keystroke "go to the doc" gesture; explore alternatives via
+|:VimHelpSearch|.
+
+Landing behaviour (from |vimhelp.jump|):
+  1. Try `:help <tag>` when the hit has a tag. Nicer UX when the tag
+     is discoverable on |runtimepath|.
+  2. On `:help` failure (typically |E149| when the indexed corpus
+     lives outside runtimepath), fall through to
+     `:edit <document>` + cursor at `line`.
+
+Users typically bind to |K|:
+>lua
+    vim.keymap.set("n", "K", require("vimhelp").hover,
+      { desc = "vimhelp hover" })
+<
+The plugin does NOT auto-map |K| — it's already claimed by LSP hover,
+filetype-specific handlers, and user configs.
+
+Every hover failure mode (no word under cursor, missing binary, missing
+index, zero hits, non-zero subprocess exit) surfaces as a |vim.notify|
+line, never a Lua traceback. Safe to bind directly.
+
 ==============================================================================
 5. Configuration                                             *vimhelp-config*
 
@@ -130,9 +161,13 @@ Facade (`require("vimhelp")`):
 
 - `setup(opts?, deps?)`   — merge opts over defaults; optional.
 - `search(query, deps?)`  — resolve binary + run subprocess + parse +
-                             route to picker. Returns the raw parsed
-                             result so callers can pipe it further
-                             (a future `K`-handler slice will).
+                             route to picker. Throws on failure (the
+                             |:VimHelpSearch| command wrapper pcalls
+                             it). Returns the raw parsed result.
+- `hover(deps?)`          — `<cword>` → `--limit=1` search → jump.
+                             Never throws (safe to bind to a keymap
+                             directly). Returns the raw parsed result
+                             when a jump happened, nil otherwise.
 
 ==============================================================================
 7. Health                                                    *vimhelp-health*

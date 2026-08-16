@@ -21,8 +21,9 @@ index, BM25 scoring, snippet highlighting) lives in the binary.
 
 **Status:** pre-v0.1.0. `:VimHelpSearch` opens a snacks or telescope
 picker when either is installed, or prints to `:messages` otherwise.
-`K`-handler for enhanced hover and an auto-index bootstrap land in
-follow-up slices.
+`:VimHelpHover` (and `require("vimhelp").hover()` for keymaps) jumps
+straight to the top hit for the word under the cursor. An auto-index
+bootstrap lands in a follow-up slice.
 
 ## Install
 
@@ -63,6 +64,8 @@ vimhelp-index build --incremental --docs "$VIMRUNTIME/doc/*.txt" --out ~/.cache/
 
 ## Usage
 
+### `:VimHelpSearch <query>` — interactive search
+
 ```
 :VimHelpSearch floating window
 ```
@@ -92,6 +95,33 @@ Sample messages output (fallback):
 2. wincfg-title  (score 1.85)
    ...
 ```
+
+### `:VimHelpHover` — jump to the top hit for `<cword>`
+
+```
+:VimHelpHover
+```
+
+Grabs the word under the cursor, runs a `--limit=1` search, and jumps
+straight to the top hit. Skips the picker on purpose — hover is a
+one-keystroke "go to the doc" gesture; explore alternatives via
+`:VimHelpSearch`.
+
+Bind to `K` (or your preferred key):
+
+```lua
+vim.keymap.set("n", "K", require("vimhelp").hover, { desc = "vimhelp hover" })
+```
+
+The plugin does NOT auto-map `K` — it's already claimed by LSP hover,
+filetype-specific handlers, and user configs, so auto-mapping would be
+user-hostile.
+
+Every hover failure mode (no word under cursor, missing binary, missing
+index, zero hits, non-zero subprocess exit) surfaces as a `vim.notify`
+line, never a Lua traceback. Safe to bind directly.
+
+### Health
 
 Run `:checkhealth vimhelp` to verify the binary and index directory
 are resolvable — both surface actionable messages when missing.

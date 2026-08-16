@@ -34,3 +34,17 @@ end, {
 	nargs = "+",
 	desc = "Full-text search over :help via vimhelp-index",
 })
+
+-- :VimHelpHover — grab the word under the cursor, query, jump to the
+-- top hit. Users typically bind this to K:
+--   vim.keymap.set("n", "K", require("vimhelp").hover, { desc = "vimhelp hover" })
+-- The plugin does NOT auto-map K — K is already claimed by LSP hover,
+-- filetype-specific handlers, and user configs, so auto-mapping would
+-- be user-hostile.
+vim.api.nvim_create_user_command("VimHelpHover", function()
+	-- hover() has its own error handling (notify-not-throw) since it's
+	-- meant to be safe as a keymap target; no pcall wrap needed here.
+	require("vimhelp").hover()
+end, {
+	desc = "Jump to the top vimhelp-index hit for the word under the cursor",
+})

@@ -42,4 +42,173 @@ describe("vimhelp", function()
 			assert.is_truthy(tostring(err):match("vimhelp%-index binary not found"))
 		end)
 	end)
+
+	describe("hover", function()
+		--- Capture notify calls without touching :messages, and shape a
+		--- deps table that keeps hover self-contained (no editor state
+		--- and no real subprocess).
+		local function capture_notifies()
+			local calls = {}
+			return function(msg, level)
+				calls[#calls + 1] = { msg = msg, level = level }
+			end, calls
+		end
+
+		it("notifies + returns nil when the word under cursor is empty", function()
+			local notify, calls = capture_notifies()
+			mod.setup({ binary_path = "/absolutely-nope" }) -- won't be reached
+			local r = mod.hover({
+				word_getter = function()
+					return ""
+				end,
+				notify = notify,
+			})
+			assert.is_nil(r)
+			assert.equals(1, #calls)
+			assert.is_truthy(calls[1].msg:match("no word under cursor"))
+			-- Level for informational (not error) — no word is user state,
+			-- not a plugin failure.
+			assert.equals(vim.log.levels.INFO, calls[1].level)
+		end)
+
+		it("notifies at ERROR level when binary is unresolved (no throw)", function()
+			local notify, calls = capture_notifies()
+			mod.setup({ binary_path = "/definitely/not/a/binary" })
+			local r = mod.hover({
+				word_getter = function()
+					return "some-word"
+				end,
+				notify = notify,
+			})
+			assert.is_nil(r)
+			assert.equals(1, #calls)
+			assert.is_truthy(calls[1].msg:match("vimhelp%-index binary not found"))
+			assert.equals(vim.log.levels.ERROR, calls[1].level)
+		end)
+
+		it("jumps to the top hit via the injected jump when hits are returned", function()
+			-- Fake a resolvable binary by pointing binary_path at a real
+			-- executable on the test host — the runner is stubbed so the
+			-- binary is never actually invoked; only resolve() has to
+			-- pass the executable check.
+			local nvim_bin = vim.v.progpath -- always executable in a running Neovim
+			-- index_dir must also exist so the isdirectory check passes.
+			local tmp = vim.fn.tempname()
+			vim.fn.mkdir(tmp, "p")
+
+			mod.setup({ binary_path = nvim_bin, index_dir = tmp })
+
+			local captured_argv
+			local runner = function(argv)
+				captured_argv = argv
+				return {
+					code = 0,
+					stdout = vim.json.encode({
+						query = "some-word",
+						hits = {
+							{
+								document = "doc/a.txt",
+								tag = "top-hit",
+								section_header = "S",
+								line = 42,
+								score = 3.14,
+								snippet = "body",
+							},
+							{
+								document = "doc/b.txt",
+								tag = "runner-up",
+								section_header = "S2",
+								line = 88,
+								score = 1.23,
+								snippet = "body2",
+							},
+						},
+					}),
+					stderr = "",
+				}
+			end
+			local jumped
+			local notify = function() end
+
+			local r = mod.hover({
+				word_getter = function()
+					return "some-word"
+				end,
+				notify = notify,
+				runner = runner,
+				jump = function(hit)
+					jumped = hit
+				end,
+			})
+
+			-- Top hit wins.
+			assert.is_not_nil(jumped)
+			assert.equals("top-hit", jumped.tag)
+			-- Fixed limit=1 for hover — the CLI --limit arg should be "1",
+			-- independent of the config.limit (default 20).
+			assert.equals("1", captured_argv[8])
+			-- Returns the raw parsed result so downstream callers (e.g. a
+			-- future "show alternatives" wrapper) can inspect it.
+			assert.is_not_nil(r)
+			assert.equals(2, #r.hits)
+		end)
+
+		it("notifies + returns nil when the search returns zero hits", function()
+			local nvim_bin = vim.v.progpath
+			local tmp = vim.fn.tempname()
+			vim.fn.mkdir(tmp, "p")
+			mod.setup({ binary_path = nvim_bin, index_dir = tmp })
+
+			local notify, calls = capture_notifies()
+			local jumped
+			local r = mod.hover({
+				word_getter = function()
+					return "no-such-word"
+				end,
+				notify = notify,
+				runner = function()
+					return {
+						code = 0,
+						stdout = vim.json.encode({ query = "no-such-word", hits = {} }),
+						stderr = "",
+					}
+				end,
+				jump = function(hit)
+					jumped = hit
+				end,
+			})
+			assert.is_nil(r)
+			assert.is_nil(jumped)
+			assert.equals(1, #calls)
+			assert.is_truthy(calls[1].msg:match("no hits"))
+		end)
+
+		it("notifies at ERROR + returns nil when the subprocess exits non-zero", function()
+			local nvim_bin = vim.v.progpath
+			local tmp = vim.fn.tempname()
+			vim.fn.mkdir(tmp, "p")
+			mod.setup({ binary_path = nvim_bin, index_dir = tmp })
+
+			local notify, calls = capture_notifies()
+			local jumped
+			local r = mod.hover({
+				word_getter = function()
+					return "any"
+				end,
+				notify = notify,
+				runner = function()
+					return { code = 3, stdout = "", stderr = "boom" }
+				end,
+				jump = function(hit)
+					jumped = hit
+				end,
+			})
+			assert.is_nil(r)
+			assert.is_nil(jumped)
+			assert.equals(1, #calls)
+			assert.equals(vim.log.levels.ERROR, calls[1].level)
+			assert.is_truthy(calls[1].msg:match("code 3"))
+			assert.is_truthy(calls[1].msg:match("boom"))
+		end)
+	end)
 end)
