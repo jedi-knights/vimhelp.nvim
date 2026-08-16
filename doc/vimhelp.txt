@@ -1,51 +1,122 @@
-*vimhelp.txt*   Scaffolded with plug-scaffold (style: omar)
+*vimhelp.txt*   Full-text search over :help via vimhelp-index
 
 Author:  Omar Crosby
 License: MIT
 
 ==============================================================================
-CONTENTS                                          *vimhelp-contents*
+CONTENTS                                                    *vimhelp-contents*
 
   1. Introduction ................ |vimhelp-intro|
-  2. Setup ....................... |vimhelp-setup|
-  3. API ......................... |vimhelp-api|
-  4. Health ...................... |vimhelp-health|
+  2. Requirements ................ |vimhelp-requirements|
+  3. Setup ....................... |vimhelp-setup|
+  4. Commands .................... |vimhelp-commands|
+     4.1. :VimHelpSearch ......... |:VimHelpSearch|
+  5. Configuration ............... |vimhelp-config|
+  6. API ......................... |vimhelp-api|
+  7. Health ...................... |vimhelp-health|
 
 ==============================================================================
-1. Introduction                                      *vimhelp-intro*
+1. Introduction                                                *vimhelp-intro*
 
-TODO: describe the plugin.
+vimhelp.nvim wires the |vimhelp-index| CLI into Neovim: full-text search
+over |:help| that finds the doc you need without knowing the exact tag.
+
+The plugin is a thin shim — it invokes the vimhelp-index binary as a
+subprocess, parses the JSON response, and renders ranked hits. The
+heavy lifting (tantivy index, BM25 scoring, snippet highlighting) lives
+in the CLI.
 
 ==============================================================================
-2. Setup                                             *vimhelp-setup*
+2. Requirements                                         *vimhelp-requirements*
 
-setup() is optional — the plugin loads its `plugin/` entry on startup
-and defers the rest to first `require()`. Call setup only when you
-need to override defaults or inject dependencies.
+- Neovim 0.10+.
+- The `vimhelp-index` binary on `$PATH`, or a `binary_path` set via
+  |vimhelp-setup|. Install from:
+  https://github.com/jedi-knights/vimhelp-index/releases
+- An index directory built by `vimhelp-index build`. Default location:
+  `stdpath("cache") .. "/vimhelp-index"`.
+
+==============================================================================
+3. Setup                                                       *vimhelp-setup*
+
+setup() is optional — defaults ship in config.lua and the |:VimHelpSearch|
+command works with no configuration when vimhelp-index is on PATH and
+the default index directory exists. Call setup only to override defaults.
 >lua
     require("vimhelp").setup({
-      -- your config here
+      binary_path = "/opt/homebrew/bin/vimhelp-index",  -- override PATH lookup
+      index_dir   = vim.fn.stdpath("data") .. "/help-index",
+      limit       = 10,
     })
 <
-The second argument accepts injected dependencies so tests can swap
-production collaborators for fakes:
->lua
-    require("vimhelp").setup({}, { notifier = fake })
+
+==============================================================================
+4. Commands                                                 *vimhelp-commands*
+
+------------------------------------------------------------------------------
+4.1. :VimHelpSearch                                         *:VimHelpSearch*
+
+>
+    :VimHelpSearch {query}
+<
+Search the vimhelp index for {query} and print ranked hits to |:messages|.
+Multi-word queries work: `:VimHelpSearch floating window` is a single
+query, not two.
+
+Rejects an empty query with an actionable message. Errors clearly if the
+binary is missing (points at the install URL) or the index directory
+doesn't exist (points at the build command).
+
+Example output: >
+    1. nvim_open_win  (score 3.42)
+       $VIMRUNTIME/doc/api.txt:1287  — 3.2. Window functions
+       Opens a new floating window. Windows attach to a buffer …
+
+    2. wincfg-title  (score 1.85)
+       ...
 <
 
 ==============================================================================
-3. API                                                 *vimhelp-api*
+5. Configuration                                             *vimhelp-config*
 
-Submodules:
-
-- `require("vimhelp").config`   — defaults and merge helper
-- `require("vimhelp").detector` — should_load() gate
-- `require("vimhelp").health`   — |:checkhealth| entry point
+Defaults (see `lua/vimhelp/config.lua`):
+>
+    {
+      binary_path = nil,     -- nil probes $PATH for "vimhelp-index"
+      index_dir   = stdpath("cache") .. "/vimhelp-index",
+      limit       = 20,      -- 0 means the CLI's default cap
+    }
+<
 
 ==============================================================================
-4. Health                                           *vimhelp-health*
+6. API                                                         *vimhelp-api*
 
-Run `:checkhealth vimhelp` to verify the plugin loaded and
-the runtime environment is supported.
+Submodules (`require("vimhelp.<name>")`):
+
+- `config`   — defaults and merge helper
+- `binary`   — subprocess invocation (`resolve`, `search`). Injectable
+               `runner` for tests.
+- `search`   — pure `parse` + `render` for the CLI's JSON envelope.
+- `health`   — |:checkhealth| entry point.
+
+Facade (`require("vimhelp")`):
+
+- `setup(opts?, deps?)` — merge opts over defaults; optional.
+- `search(query, deps?)` — resolve binary + run subprocess + parse + print.
+                           Returns the raw parsed result so callers can
+                           pipe it further (a future picker slice will).
+
+==============================================================================
+7. Health                                                    *vimhelp-health*
+
+Run `:checkhealth vimhelp` to verify:
+
+- The plugin loaded and the detector permits execution.
+- `vimhelp-index` is discoverable on PATH (or at the configured
+  `binary_path`).
+- The configured `index_dir` exists.
+
+Both binary-not-found and index-not-found surface as actionable health
+reports pointing at the install URL and the build command respectively.
 
  vim:tw=78:ts=8:noet:ft=help:norl:
