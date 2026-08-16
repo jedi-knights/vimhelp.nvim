@@ -65,28 +65,38 @@ function M.search(bin, index_dir, query, limit, deps)
 	return runner(argv)
 end
 
---- Run `vimhelp-index build --docs=<glob> --out=<dir> [--incremental]`.
+--- Run `vimhelp-index build --docs=<glob> [--docs=<glob>...] --out=<dir> [--incremental]`.
+---
+--- `docs_globs` is a non-empty list of glob strings — every entry becomes
+--- one `--docs` flag. The CLI unions the resolved paths (see
+--- vimhelp-index PR #11). Callers with a single glob wrap it in a
+--- one-element table; the facade (`vimhelp.M.build`) does that
+--- normalization on the user's `auto_index_docs` config value.
+---
 --- @param bin string Resolved binary path.
---- @param docs string Glob passed as --docs (single-glob for now).
+--- @param docs_globs string[] One or more glob strings; each becomes a --docs flag.
 --- @param out_dir string Where the index gets written.
 --- @param opts table? { incremental: boolean }
 --- @param deps table? { runner: fun(argv): {code,stdout,stderr} }
 --- @return table result  { code, stdout, stderr }
-function M.build(bin, docs, out_dir, opts, deps)
+function M.build(bin, docs_globs, out_dir, opts, deps)
 	assert(type(bin) == "string" and #bin > 0, "binary.build: bin required")
-	assert(type(docs) == "string" and #docs > 0, "binary.build: docs glob required")
+	assert(
+		type(docs_globs) == "table" and #docs_globs > 0,
+		"binary.build: docs_globs must be a non-empty list of glob strings"
+	)
 	assert(type(out_dir) == "string" and #out_dir > 0, "binary.build: out_dir required")
 	opts = opts or {}
 	deps = deps or {}
 	local runner = deps.runner or default_runner
-	local argv = {
-		bin,
-		"build",
-		"--docs",
-		docs,
-		"--out",
-		out_dir,
-	}
+	local argv = { bin, "build" }
+	for _, glob in ipairs(docs_globs) do
+		assert(type(glob) == "string" and #glob > 0, "binary.build: each docs_globs entry must be a non-empty string")
+		table.insert(argv, "--docs")
+		table.insert(argv, glob)
+	end
+	table.insert(argv, "--out")
+	table.insert(argv, out_dir)
 	if opts.incremental then
 		table.insert(argv, "--incremental")
 	end

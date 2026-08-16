@@ -33,8 +33,28 @@ function M.setup(opts, deps)
 	M.deps = deps or {}
 end
 
+--- Normalize `auto_index_docs` (string | table<string>) into the
+--- canonical list-of-strings that binary.build expects. Kept local so
+--- the shape check has one home; the config value stays whatever the
+--- user wrote (a `:lua vim.inspect(...)` shows the original shape).
+local function normalize_docs_globs(docs)
+	if type(docs) == "string" then
+		if #docs == 0 then
+			error("vimhelp: auto_index_docs string must not be empty")
+		end
+		return { docs }
+	end
+	if type(docs) == "table" then
+		if #docs == 0 then
+			error("vimhelp: auto_index_docs table must not be empty")
+		end
+		return docs
+	end
+	error("vimhelp: auto_index_docs must be a string or a table of strings, got " .. type(docs))
+end
+
 --- Run `vimhelp-index build` against the configured index_dir + docs
---- glob, notifying progress and result. Same subprocess model as
+--- glob(s), notifying progress and result. Same subprocess model as
 --- search — deps.runner is injectable for tests.
 ---
 --- `opts.incremental = true` passes `--incremental` to the CLI. The
@@ -59,8 +79,20 @@ function M.build(opts, deps)
 		return false
 	end
 
+	-- Normalize with clear error before the subprocess so a bad config
+	-- value (e.g. `auto_index_docs = 42`) fails with an actionable
+	-- message rather than a Lua traceback deep in binary.build. pcall's
+	-- second return is the value on success, the error message on failure
+	-- — bind once and switch on ok.
+	local ok, docs_globs_or_err = pcall(normalize_docs_globs, M.config.auto_index_docs)
+	if not ok then
+		notify(tostring(docs_globs_or_err), vim.log.levels.ERROR)
+		return false
+	end
+	local docs_globs = docs_globs_or_err
+
 	notify(string.format("vimhelp: building index at %s...", M.config.index_dir), vim.log.levels.INFO)
-	local result = binary.build(bin, M.config.auto_index_docs, M.config.index_dir, opts, deps)
+	local result = binary.build(bin, docs_globs, M.config.index_dir, opts, deps)
 	if result.code ~= 0 then
 		notify(
 			string.format("vimhelp: build failed (exit %d): %s", result.code, vim.trim(result.stderr or "")),

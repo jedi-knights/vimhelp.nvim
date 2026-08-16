@@ -57,9 +57,12 @@ to get one:
 ```lua
 require("vimhelp").setup({
   auto_index = true,
-  -- Default docs glob covers built-in Neovim help. LazyVim users
-  -- typically widen it to catch plugin docs too:
-  -- auto_index_docs = vim.fn.stdpath("data") .. "/lazy/**/doc/*.txt",
+  -- Default docs glob covers just built-in Neovim help. Widen with
+  -- either a single glob or a list of globs:
+  auto_index_docs = {
+    vim.env.VIMRUNTIME .. "/doc/*.txt",
+    vim.fn.stdpath("data") .. "/lazy/*/doc/*.txt",
+  },
 })
 ```
 
@@ -69,8 +72,11 @@ first (blocking, with a progress `vim.notify`). Off by default — a
 long-running subprocess triggered from a search command is a
 surprise the user should opt into.
 
-Only ONE glob today. Multi-glob support needs a repeatable `--docs`
-flag on the CLI; deferred.
+`auto_index_docs` accepts either a single glob string or a list of
+glob strings; a list expands into repeated `--docs` flags on the CLI.
+Individual list entries that match zero files are silently ignored
+(handles the `plugins/*/doc/*.txt` shape on a fresh install); only
+an empty union across every glob errors.
 
 ### `:VimHelpBuild` — manual build
 
