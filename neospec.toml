@@ -1,0 +1,8 @@
+# neospec reads this on `neospec run` — used by CI in .github/workflows/ci.yml.
+# See: https://github.com/jedi-knights/neospec
+
+# init_file runs before neospec installs its coverage hook. The default
+# scripts/minimal_init.lua prepends the repo root to runtimepath so
+# `require("<module>")` resolves the local source inside the sandboxed
+# Neovim neospec spawns.
+init_file = "scripts/minimal_init.lua"

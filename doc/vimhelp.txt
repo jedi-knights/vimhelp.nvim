@@ -1,0 +1,51 @@
+*vimhelp.txt*   Scaffolded with plug-scaffold (style: omar)
+
+Author:  Omar Crosby
+License: MIT
+
+==============================================================================
+CONTENTS                                          *vimhelp-contents*
+
+  1. Introduction ................ |vimhelp-intro|
+  2. Setup ....................... |vimhelp-setup|
+  3. API ......................... |vimhelp-api|
+  4. Health ...................... |vimhelp-health|
+
+==============================================================================
+1. Introduction                                      *vimhelp-intro*
+
+TODO: describe the plugin.
+
+==============================================================================
+2. Setup                                             *vimhelp-setup*
+
+setup() is optional — the plugin loads its `plugin/` entry on startup
+and defers the rest to first `require()`. Call setup only when you
+need to override defaults or inject dependencies.
+>lua
+    require("vimhelp").setup({
+      -- your config here
+    })
+<
+The second argument accepts injected dependencies so tests can swap
+production collaborators for fakes:
+>lua
+    require("vimhelp").setup({}, { notifier = fake })
+<
+
+==============================================================================
+3. API                                                 *vimhelp-api*
+
+Submodules:
+
+- `require("vimhelp").config`   — defaults and merge helper
+- `require("vimhelp").detector` — should_load() gate
+- `require("vimhelp").health`   — |:checkhealth| entry point
+
+==============================================================================
+4. Health                                           *vimhelp-health*
+
+Run `:checkhealth vimhelp` to verify the plugin loaded and
+the runtime environment is supported.
+
+ vim:tw=78:ts=8:noet:ft=help:norl:

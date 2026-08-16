@@ -1,0 +1,14 @@
+# Neovim
+*.swp
+*.swo
+
+# Test/coverage output
+luacov.stats.out
+luacov.report.out
+
+# Editor
+.idea/
+.vscode/
+
+# macOS
+.DS_Store

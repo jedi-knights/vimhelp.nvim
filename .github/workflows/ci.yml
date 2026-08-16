@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install StyLua
+        run: |
+          curl -sL "https://github.com/JohnnyMorganz/StyLua/releases/latest/download/stylua-linux-x86_64.zip" -o stylua.zip
+          unzip stylua.zip
+          chmod +x stylua
+          sudo mv stylua /usr/local/bin/
+          stylua --version
+
+      - name: Run lint check
+        run: make lint
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Run plenary-busted tests via neospec
+        uses: jedi-knights/neospec@v0
+        with:
+          verbose: "true"
+          test-patterns: "tests/*_spec.lua"
+
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - name: All checks passed
+        run: echo "All CI checks passed."
