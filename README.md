@@ -19,9 +19,10 @@ index, BM25 scoring, snippet highlighting) lives in the binary.
   binary on `$PATH` (or set `binary_path` in setup)
 - An index built by `vimhelp-index build` (see below)
 
-**Status:** pre-v0.1.0. `:VimHelpSearch` works today; a snacks/telescope
-picker, `K`-handler for enhanced hover, and an auto-index bootstrap
-land in follow-up slices.
+**Status:** pre-v0.1.0. `:VimHelpSearch` opens a snacks or telescope
+picker when either is installed, or prints to `:messages` otherwise.
+`K`-handler for enhanced hover and an auto-index bootstrap land in
+follow-up slices.
 
 ## Install
 
@@ -31,11 +32,15 @@ land in follow-up slices.
 {
   "jedi-knights/vimhelp.nvim",
   cmd = "VimHelpSearch",
+  -- Optional: force a specific picker instead of auto-detecting.
+  -- dependencies = { "folke/snacks.nvim" },        -- for snacks picker
+  -- dependencies = { "nvim-telescope/telescope.nvim" }, -- for telescope
   opts = {
-    -- Optional. Defaults are usually right when vimhelp-index is on PATH.
-    -- index_dir = vim.fn.stdpath("cache") .. "/vimhelp-index",
+    -- Defaults are usually right when vimhelp-index is on PATH.
+    -- index_dir   = vim.fn.stdpath("cache") .. "/vimhelp-index",
     -- binary_path = "/opt/homebrew/bin/vimhelp-index",
-    -- limit = 20,
+    -- limit       = 20,
+    -- picker      = "auto",  -- "auto" | "snacks" | "telescope" | "messages"
   },
 }
 ```
@@ -62,7 +67,22 @@ vimhelp-index build --incremental --docs "$VIMRUNTIME/doc/*.txt" --out ~/.cache/
 :VimHelpSearch floating window
 ```
 
-Sample output:
+`:VimHelpSearch` opens a picker when one is available:
+
+- **snacks** — picked first when [`folke/snacks.nvim`](https://github.com/folke/snacks.nvim) is loaded
+- **telescope** — picked when snacks isn't available but [`nvim-telescope/telescope.nvim`](https://github.com/nvim-telescope/telescope.nvim) is
+- **messages** — fallback for bare Neovim, prints ranked hits to `:messages`
+
+Select a hit to jump: `:help <tag>` when the hit has a tag,
+`:edit <document>` at the line otherwise.
+
+Force a specific backend with the `picker` config key:
+`"auto"` (default), `"snacks"`, `"telescope"`, or `"messages"`.
+Non-`"messages"` values silently fall back to `"messages"` when the
+requested picker isn't loadable, so `:VimHelpSearch` never errors
+just because a peer isn't installed.
+
+Sample messages output (fallback):
 
 ```
 1. nvim_open_win  (score 3.42)
@@ -80,9 +100,10 @@ are resolvable — both surface actionable messages when missing.
 
 1. `:VimHelpSearch <query>` runs `vimhelp-index search --index=<configured-dir> --format=json <query>` as a subprocess.
 2. Parses the JSON envelope into a Lua table.
-3. Renders hits ranked by BM25 score with snippets centered on the matched term.
+3. Dispatches the result to the configured picker backend (`snacks` → `telescope` → `messages` under the `"auto"` default).
+4. On selection, jumps to `:help <tag>` when the hit has a tag, else `:edit <document>` at the line.
 
-The subprocess runner is injectable via `require("vimhelp").search(query, { runner = ... })` so tests never spawn a real binary. See `tests/` for the pattern.
+Every subprocess, picker framework, and jump action is injectable via a `deps` table for tests — nothing spawns a real binary, no real picker gets opened, no cursor gets moved. See `tests/` for the pattern.
 
 ## Development
 

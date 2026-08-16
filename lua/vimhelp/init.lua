@@ -1,13 +1,16 @@
 --- vimhelp: full-text search over `:help` via the vimhelp-index CLI.
 ---
 --- Public entry point for the :VimHelpSearch command. Heavy lifting
---- is split into binary.lua (subprocess invocation, injectable) and
---- search.lua (pure JSON parsing + rendering). This module is a thin
---- facade — the two seams above are the test surface.
+--- is split across four modules — binary.lua (subprocess invocation,
+--- injectable), search.lua (pure JSON parsing + rendering), picker.lua
+--- (dispatcher over snacks/telescope/messages backends), jump.lua
+--- (land the cursor on a selected hit). This module is a thin facade —
+--- those four seams are the test surface.
 
 local binary = require("vimhelp.binary")
 local config = require("vimhelp.config")
 local detector = require("vimhelp.detector")
+local picker = require("vimhelp.picker")
 local search = require("vimhelp.search")
 
 local M = {}
@@ -29,13 +32,17 @@ function M.setup(opts, deps)
 	M.deps = deps or {}
 end
 
---- Search the vimhelp index and print formatted hits to :messages.
+--- Search the vimhelp index and route the result to a picker backend.
+--- On bare Neovim (no snacks / telescope) falls back to printing to
+--- :messages, matching the pre-picker behaviour.
+---
 --- Returns the raw parsed result so callers can pipe it further
---- (a future picker slice will use this instead of print).
+--- (a future `K`-handler slice will call this and consume `.hits[1]`
+--- without opening a picker).
 ---
 --- @param query string  Non-empty query text. Multi-word queries work
 ---                       — clap passes them through as a single arg.
---- @param deps table?   { runner: fun(argv)->{code,stdout,stderr} }
+--- @param deps table?   { runner, has_module, pickers, snacks, telescope, jump, printer }
 --- @return { query: string, hits: table[] }?
 function M.search(query, deps)
 	assert(type(query) == "string" and #query > 0, "vimhelp.search: query required")
@@ -65,7 +72,9 @@ function M.search(query, deps)
 	end
 
 	local parsed = search.parse(result.stdout)
-	print(search.render(parsed))
+	-- Route to picker (or messages fallback). Same deps table so tests
+	-- inject fake pickers / has_module through one shape.
+	picker.pick(parsed, { picker = M.config.picker }, deps)
 	return parsed
 end
 

@@ -22,6 +22,14 @@ M.defaults = {
 	--- needs a provable upper bound.
 	--- @type integer
 	limit = 20,
+
+	--- Which picker backend to open on `:VimHelpSearch`.
+	---   "auto"      — snacks if loadable, else telescope, else messages
+	---   "snacks"    — force snacks (falls back to messages if unavailable)
+	---   "telescope" — force telescope (falls back to messages if unavailable)
+	---   "messages"  — always print to :messages (no interactive selection)
+	--- @type string
+	picker = "auto",
 }
 
 --- Deep-merge user opts over defaults. User values win on conflict.
