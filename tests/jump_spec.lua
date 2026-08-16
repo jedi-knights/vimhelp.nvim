@@ -77,6 +77,49 @@ describe("vimhelp.jump", function()
 		end)
 	end)
 
+	it("falls back to :edit + line when :help <tag> throws (e.g. E149)", function()
+		-- Real-world case: index built from files outside runtimepath.
+		-- :help <tag> throws E149; jump must NOT propagate — it should
+		-- fall through to :edit <document> so the user still lands
+		-- somewhere reasonable.
+		local cmds = {}
+		local cursors = {}
+		local deps = {
+			cmd = function(c)
+				if c:match("^help ") then
+					error("Vim(help):E149: No help for tiny-ref")
+				end
+				cmds[#cmds + 1] = c
+			end,
+			cursor = function(win, pos)
+				cursors[#cursors + 1] = { win = win, pos = pos }
+			end,
+		}
+		jump.to_hit({ tag = "tiny-ref", document = "doc/tiny.txt", line = 12 }, deps)
+		-- One command actually executed — the :edit fallback.
+		assert.equals(1, #cmds)
+		assert.is_truthy(cmds[1]:match("^edit doc/tiny%.txt$"))
+		assert.equals(1, #cursors)
+		assert.same({ 12, 0 }, cursors[1].pos)
+	end)
+
+	it("errors when :help throws AND the hit has no document to fall back to", function()
+		-- Same real-world failure mode, but with no document either.
+		-- We can't guess where to land the user — surface as an error
+		-- so the picker adapter can vim.notify it.
+		local deps = {
+			cmd = function(c)
+				if c:match("^help ") then
+					error("Vim(help):E149: No help")
+				end
+			end,
+			cursor = function() end,
+		}
+		assert.has_error(function()
+			jump.to_hit({ tag = "unresolvable" }, deps)
+		end)
+	end)
+
 	it("rejects a non-table hit at the boundary", function()
 		assert.has_error(function()
 			---@diagnostic disable-next-line: param-type-mismatch
