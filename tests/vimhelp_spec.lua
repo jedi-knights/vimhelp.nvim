@@ -345,6 +345,132 @@ describe("vimhelp", function()
 		end)
 	end)
 
+	describe("build_async", function()
+		local function capture_notifies()
+			local calls = {}
+			return function(msg, level)
+				calls[#calls + 1] = { msg = msg, level = level }
+			end, calls
+		end
+
+		-- Fake async runner: matches the (argv, on_done) shape and calls
+		-- the callback synchronously with the canned result. Tests are
+		-- single-threaded so this is deterministic without vim.schedule.
+		local function fake_async_runner(canned)
+			return function(_argv, on_done)
+				on_done(canned)
+			end
+		end
+
+		it("notifies + on_done(false) when the binary is unresolved", function()
+			mod.setup({ binary_path = "/definitely/not/a/binary" })
+			local notify, calls = capture_notifies()
+			local received
+			mod.build_async({}, {
+				notify = notify,
+				async_runner = function()
+					error("async_runner should not be reached when bin missing")
+				end,
+			}, function(ok)
+				received = ok
+			end)
+			assert.is_false(received)
+			assert.equals(vim.log.levels.ERROR, calls[1].level)
+			assert.is_truthy(calls[1].msg:match("vimhelp%-index binary not found"))
+		end)
+
+		it("notifies progress + success and calls on_done(true) on happy path", function()
+			mod.setup({
+				binary_path = vim.v.progpath,
+				auto_index_docs = "/some/glob/*.txt",
+			})
+			local captured_argv
+			local notify, calls = capture_notifies()
+			local received
+			mod.build_async({}, {
+				notify = notify,
+				async_runner = function(argv, on_done)
+					captured_argv = argv
+					on_done({
+						code = 0,
+						stdout = "Indexed 4 section(s) from 1 file(s) → /tmp/idx",
+						stderr = "",
+					})
+				end,
+			}, function(ok)
+				received = ok
+			end)
+			assert.is_true(received)
+			-- Progress notify first, CLI-summary notify second.
+			assert.equals(2, #calls)
+			assert.is_truthy(calls[1].msg:match("building index"))
+			assert.is_truthy(calls[2].msg:match("Indexed 4 section"))
+			assert.equals("/some/glob/*.txt", captured_argv[4])
+		end)
+
+		it("appends --incremental when opts.incremental=true", function()
+			mod.setup({ binary_path = vim.v.progpath })
+			local captured_argv
+			mod.build_async({ incremental = true }, {
+				notify = function() end,
+				async_runner = function(argv, on_done)
+					captured_argv = argv
+					on_done({ code = 0, stdout = "ok", stderr = "" })
+				end,
+			})
+			assert.equals("--incremental", captured_argv[7])
+		end)
+
+		it("notifies ERROR + on_done(false) on non-zero CLI exit", function()
+			mod.setup({ binary_path = vim.v.progpath })
+			local notify, calls = capture_notifies()
+			local received
+			mod.build_async({}, {
+				notify = notify,
+				async_runner = fake_async_runner({ code = 2, stdout = "", stderr = "no files matched" }),
+			}, function(ok)
+				received = ok
+			end)
+			assert.is_false(received)
+			assert.equals(2, #calls)
+			assert.equals(vim.log.levels.ERROR, calls[2].level)
+			assert.is_truthy(calls[2].msg:match("exit 2"))
+			assert.is_truthy(calls[2].msg:match("no files matched"))
+		end)
+
+		it("notifies + on_done(false) when auto_index_docs is a bad type", function()
+			mod.setup({
+				binary_path = vim.v.progpath,
+				---@diagnostic disable-next-line: assign-type-mismatch
+				auto_index_docs = 42,
+			})
+			local notify, calls = capture_notifies()
+			local received
+			mod.build_async({}, {
+				notify = notify,
+				async_runner = function()
+					error("async_runner should not be called when normalization fails")
+				end,
+			}, function(ok)
+				received = ok
+			end)
+			assert.is_false(received)
+			assert.is_truthy(calls[#calls].msg:match("auto_index_docs must be a string or a table"))
+		end)
+
+		it("is safe to call without an on_done callback (fire-and-forget)", function()
+			-- The :VimHelpBuild command doesn't care about the result — the
+			-- notify lines are the surface. Missing callback must not throw
+			-- (neospec's luassert lacks `assert.has_no.errors`; a raw call
+			-- surfaces any throw as a test failure just as clearly).
+			mod.setup({ binary_path = vim.v.progpath })
+			mod.build_async({}, {
+				notify = function() end,
+				async_runner = fake_async_runner({ code = 0, stdout = "ok", stderr = "" }),
+			})
+		end)
+	end)
+
 	describe("ensure_index", function()
 		it("returns nil when the index directory already exists", function()
 			local tmp = vim.fn.tempname()
