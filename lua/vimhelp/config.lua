@@ -11,10 +11,25 @@ M.defaults = {
 	binary_path = nil,
 
 	--- Directory where the tantivy index lives. `:VimHelpSearch` opens
-	--- this directory; a future auto-index slice will build into it
-	--- on first load.
+	--- this directory; `auto_index = true` builds into it on first use.
 	--- @type string
 	index_dir = vim.fn.stdpath("cache") .. "/vimhelp-index",
+
+	--- When true, `:VimHelpSearch` / `:VimHelpHover` transparently
+	--- build the index on first use if `index_dir` doesn't exist yet.
+	--- Off by default: a long-running subprocess triggered from a
+	--- search command is a surprise the user should opt into.
+	--- @type boolean
+	auto_index = false,
+
+	--- Glob passed to `vimhelp-index build --docs=<glob>` when the
+	--- auto-build fires. Default covers just built-in Neovim help.
+	--- LazyVim users typically override to something like:
+	---   vim.fn.stdpath("data") .. "/lazy/**/doc/*.txt"
+	--- Note: only ONE glob today — multi-glob support is a follow-up
+	--- (needs a repeatable --docs flag on the CLI).
+	--- @type string
+	auto_index_docs = (vim.env.VIMRUNTIME or "") .. "/doc/*.txt",
 
 	--- Max hits `:VimHelpSearch` requests from the CLI. Zero means the
 	--- CLI's default (currently 20 per the search subcommand). Do not

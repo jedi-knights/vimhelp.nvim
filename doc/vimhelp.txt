@@ -12,6 +12,7 @@ CONTENTS                                                    *vimhelp-contents*
   4. Commands .................... |vimhelp-commands|
      4.1. :VimHelpSearch ......... |:VimHelpSearch|
      4.2. :VimHelpHover .......... |:VimHelpHover|
+     4.3. :VimHelpBuild .......... |:VimHelpBuild|
   5. Configuration ............... |vimhelp-config|
   6. API ......................... |vimhelp-api|
   7. Health ...................... |vimhelp-health|
@@ -124,18 +125,47 @@ Every hover failure mode (no word under cursor, missing binary, missing
 index, zero hits, non-zero subprocess exit) surfaces as a |vim.notify|
 line, never a Lua traceback. Safe to bind directly.
 
+------------------------------------------------------------------------------
+4.3. :VimHelpBuild                                          *:VimHelpBuild*
+
+>
+    :VimHelpBuild
+    :VimHelpBuild incremental
+<
+Run `vimhelp-index build` against the configured `index_dir` +
+`auto_index_docs` glob. Progress and the CLI's summary line are
+reported via |vim.notify|. Never throws — failures surface as
+notify ERROR lines.
+
+The `incremental` argument passes `--incremental` to the CLI so only
+files changed since the last build are re-indexed. Useful after
+installing new plugins.
+
+Related: the `auto_index = true` config key runs the same build
+automatically the first time |:VimHelpSearch| / |:VimHelpHover| finds
+`index_dir` missing.
+
 ==============================================================================
 5. Configuration                                             *vimhelp-config*
 
 Defaults (see `lua/vimhelp/config.lua`):
 >
     {
-      binary_path = nil,     -- nil probes $PATH for "vimhelp-index"
-      index_dir   = stdpath("cache") .. "/vimhelp-index",
-      limit       = 20,      -- 0 means the CLI's default cap
-      picker      = "auto",  -- "auto" | "snacks" | "telescope" | "messages"
+      binary_path     = nil,     -- nil probes $PATH for "vimhelp-index"
+      index_dir       = stdpath("cache") .. "/vimhelp-index",
+      limit           = 20,      -- 0 means the CLI's default cap
+      picker          = "auto",  -- "auto" | "snacks" | "telescope" | "messages"
+      auto_index      = false,   -- opt in to auto-build on first use
+      auto_index_docs = $VIMRUNTIME .. "/doc/*.txt",
     }
 <
+`auto_index` and `auto_index_docs` work together:
+  - When `auto_index = true` and `index_dir` doesn't exist, the next
+    |:VimHelpSearch| / |:VimHelpHover| runs `vimhelp-index build
+    --docs=<auto_index_docs> --out=<index_dir>` first, then continues.
+  - `auto_index_docs` is a single glob (multi-glob support waits on a
+    CLI change). Recursive patterns work: LazyVim users typically set
+    `stdpath("data") .. "/lazy/**/doc/*.txt"` to catch plugin docs.
 
 ==============================================================================
 6. API                                                         *vimhelp-api*
@@ -159,15 +189,27 @@ Submodules (`require("vimhelp.<name>")`):
 
 Facade (`require("vimhelp")`):
 
-- `setup(opts?, deps?)`   — merge opts over defaults; optional.
-- `search(query, deps?)`  — resolve binary + run subprocess + parse +
-                             route to picker. Throws on failure (the
-                             |:VimHelpSearch| command wrapper pcalls
-                             it). Returns the raw parsed result.
-- `hover(deps?)`          — `<cword>` → `--limit=1` search → jump.
-                             Never throws (safe to bind to a keymap
-                             directly). Returns the raw parsed result
-                             when a jump happened, nil otherwise.
+- `setup(opts?, deps?)`     — merge opts over defaults; optional.
+- `search(query, deps?)`    — resolve binary + ensure_index + run
+                               subprocess + parse + route to picker.
+                               Throws on failure (the |:VimHelpSearch|
+                               command wrapper pcalls it). Returns the
+                               raw parsed result.
+- `hover(deps?)`            — `<cword>` → ensure_index → `--limit=1`
+                               search → jump. Never throws (safe to
+                               bind to a keymap directly). Returns the
+                               raw parsed result when a jump happened,
+                               nil otherwise.
+- `build(opts?, deps?)`     — `vimhelp-index build` against config's
+                               `auto_index_docs` + `index_dir`.
+                               `opts.incremental` adds `--incremental`.
+                               Notifies progress + result. Returns
+                               true on success, false on failure.
+- `ensure_index(deps?)`     — nil when `index_dir` exists; error
+                               message string otherwise (either an
+                               actionable "run :VimHelpBuild" message
+                               or a short "auto-build failed" handle,
+                               depending on `auto_index`).
 
 ==============================================================================
 7. Health                                                    *vimhelp-health*

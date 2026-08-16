@@ -22,8 +22,9 @@ index, BM25 scoring, snippet highlighting) lives in the binary.
 **Status:** pre-v0.1.0. `:VimHelpSearch` opens a snacks or telescope
 picker when either is installed, or prints to `:messages` otherwise.
 `:VimHelpHover` (and `require("vimhelp").hover()` for keymaps) jumps
-straight to the top hit for the word under the cursor. An auto-index
-bootstrap lands in a follow-up slice.
+straight to the top hit for the word under the cursor. `:VimHelpBuild`
+builds the index manually; opt into `auto_index = true` to have it
+built transparently on first `:VimHelpSearch` / `:VimHelpHover`.
 
 ## Install
 
@@ -48,17 +49,41 @@ bootstrap lands in a follow-up slice.
 
 ## Build an index
 
-The plugin doesn't build the index for you (auto-index is a follow-up
-slice). Build once before first use:
+You need a built index before search will return anything. Three ways
+to get one:
+
+### Auto-build on first use (opt-in)
+
+```lua
+require("vimhelp").setup({
+  auto_index = true,
+  -- Default docs glob covers built-in Neovim help. LazyVim users
+  -- typically widen it to catch plugin docs too:
+  -- auto_index_docs = vim.fn.stdpath("data") .. "/lazy/**/doc/*.txt",
+})
+```
+
+When `auto_index = true` and `index_dir` doesn't exist yet, the next
+`:VimHelpSearch` or `:VimHelpHover` transparently builds the index
+first (blocking, with a progress `vim.notify`). Off by default — a
+long-running subprocess triggered from a search command is a
+surprise the user should opt into.
+
+Only ONE glob today. Multi-glob support needs a repeatable `--docs`
+flag on the CLI; deferred.
+
+### `:VimHelpBuild` — manual build
+
+```
+:VimHelpBuild               " full build against auto_index_docs
+:VimHelpBuild incremental   " re-index only changed files
+```
+
+### Directly via the CLI
 
 ```sh
 brew install jedi-knights/tap/vimhelp-index
 vimhelp-index build --docs "$VIMRUNTIME/doc/*.txt" --out ~/.cache/nvim/vimhelp-index
-```
-
-Re-run with `--incremental` when your runtime changes:
-
-```sh
 vimhelp-index build --incremental --docs "$VIMRUNTIME/doc/*.txt" --out ~/.cache/nvim/vimhelp-index
 ```
 
