@@ -1,6 +1,7 @@
 # vimhelp.nvim
 
 [![CI](https://github.com/jedi-knights/vimhelp.nvim/actions/workflows/ci.yml/badge.svg)](https://github.com/jedi-knights/vimhelp.nvim/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/jedi-knights/vimhelp.nvim?sort=semver)](https://github.com/jedi-knights/vimhelp.nvim/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 You know the docs are in there somewhere. You remember it was about
@@ -15,37 +16,61 @@ index, BM25 scoring, snippet highlighting) lives in the binary.
 
 **Requirements:**
 - Neovim 0.10+
-- The [`vimhelp-index`](https://github.com/jedi-knights/vimhelp-index)
-  binary on `$PATH` (or set `binary_path` in setup)
-- An index built by `vimhelp-index build` (see below)
-
-**Status:** pre-v0.1.0. `:VimHelpSearch` opens a snacks or telescope
-picker when either is installed, or prints to `:messages` otherwise.
-`:VimHelpHover` (and `require("vimhelp").hover()` for keymaps) jumps
-straight to the top hit for the word under the cursor. `:VimHelpBuild`
-builds the index manually; opt into `auto_index = true` to have it
-built transparently on first `:VimHelpSearch` / `:VimHelpHover`.
+- [`vimhelp-index`](https://github.com/jedi-knights/vimhelp-index) —
+  the Rust CLI this plugin shells out to (install below)
+- An index built by `vimhelp-index build` (see [Build an index](#build-an-index))
 
 ## Install
 
-### With lazy.nvim
+### 1. Install the `vimhelp-index` CLI
+
+Pick one — all methods land the same signed 5-target binary:
+
+```sh
+# Homebrew (macOS, Linux)
+brew install jedi-knights/tap/vimhelp-index
+
+# Shell one-liner (macOS, Linux)
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/jedi-knights/vimhelp-index/releases/latest/download/vimhelp-index-installer.sh | sh
+
+# Windows PowerShell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/jedi-knights/vimhelp-index/releases/latest/download/vimhelp-index-installer.ps1 | iex"
+```
+
+Or grab a prebuilt archive from the
+[releases page](https://github.com/jedi-knights/vimhelp-index/releases/latest)
+and drop the binary anywhere on `$PATH`.
+
+### 2. Install the plugin
+
+With [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ```lua
 {
   "jedi-knights/vimhelp.nvim",
-  cmd = "VimHelpSearch",
+  version = "*",             -- track semver tags; omit to follow main
+  cmd = { "VimHelpSearch", "VimHelpHover", "VimHelpBuild" },
+  keys = {
+    { "K", function() require("vimhelp").hover() end, desc = "vimhelp hover" },
+  },
   -- Optional: force a specific picker instead of auto-detecting.
   -- dependencies = { "folke/snacks.nvim" },        -- for snacks picker
   -- dependencies = { "nvim-telescope/telescope.nvim" }, -- for telescope
   opts = {
     -- Defaults are usually right when vimhelp-index is on PATH.
-    -- index_dir   = vim.fn.stdpath("cache") .. "/vimhelp-index",
-    -- binary_path = "/opt/homebrew/bin/vimhelp-index",
-    -- limit       = 20,
-    -- picker      = "auto",  -- "auto" | "snacks" | "telescope" | "messages"
+    -- index_dir       = vim.fn.stdpath("cache") .. "/vimhelp-index",
+    -- binary_path     = "/opt/homebrew/bin/vimhelp-index",
+    -- limit           = 20,
+    -- picker          = "auto",  -- "auto" | "snacks" | "telescope" | "messages"
+    -- auto_index      = false,
+    -- auto_index_docs = vim.env.VIMRUNTIME .. "/doc/*.txt",
   },
 }
 ```
+
+Verify with `:checkhealth vimhelp` — reports whether the CLI is
+discoverable and the index directory exists.
 
 ## Build an index
 
@@ -95,8 +120,11 @@ the new one, never a torn state.
 
 ### Directly via the CLI
 
+Once `vimhelp-index` is installed (see [Install](#1-install-the-vimhelp-index-cli)),
+the plugin and the CLI share the same on-disk index — building via the
+CLI is equivalent to `:VimHelpBuild`:
+
 ```sh
-brew install jedi-knights/tap/vimhelp-index
 vimhelp-index build --docs "$VIMRUNTIME/doc/*.txt" --out ~/.cache/nvim/vimhelp-index
 vimhelp-index build --incremental --docs "$VIMRUNTIME/doc/*.txt" --out ~/.cache/nvim/vimhelp-index
 ```

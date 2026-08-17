@@ -33,10 +33,15 @@ in the CLI.
 
 - Neovim 0.10+.
 - The `vimhelp-index` binary on `$PATH`, or a `binary_path` set via
-  |vimhelp-setup|. Install from:
-  https://github.com/jedi-knights/vimhelp-index/releases
+  |vimhelp-setup|. Install any of:
+    - Homebrew:  `brew install jedi-knights/tap/vimhelp-index`
+    - Shell:     `curl -LsSf https://github.com/jedi-knights/vimhelp-index/releases/latest/download/vimhelp-index-installer.sh | sh`
+    - PowerShell: `irm https://github.com/jedi-knights/vimhelp-index/releases/latest/download/vimhelp-index-installer.ps1 | iex`
+    - Manual archive from
+      https://github.com/jedi-knights/vimhelp-index/releases/latest
 - An index directory built by `vimhelp-index build`. Default location:
-  `stdpath("cache") .. "/vimhelp-index"`.
+  `stdpath("cache") .. "/vimhelp-index"`. Set `auto_index = true` (see
+  |vimhelp-config|) to have this built transparently on first use.
 - Optional peers: `folke/snacks.nvim` or `nvim-telescope/telescope.nvim`
   for an interactive picker. Without either, |:VimHelpSearch| falls
   back to a plain |:messages| render — no error.
